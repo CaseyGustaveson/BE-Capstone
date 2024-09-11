@@ -32,7 +32,13 @@ const getCartItems = async (req, res) => {
       where: { userId: req.user.id },
       include: { product: true }
     });
-    res.json(cartItems);
+
+    // Calculate total cost
+    const totalCost = cartItems.reduce((acc, item) => {
+      return acc + (item.product.price * item.quantity);
+    }, 0);
+
+    res.json({ cartItems, totalCost });
   } catch (error) {
     console.error('Error fetching cart:', error.message);
     res.status(500).json({ error: 'Failed to fetch cart items' });
@@ -122,16 +128,13 @@ const clearCart = async (req, res) => {
 
 const checkoutCart = async (req, res) => {
   try {
-    console.log('Checking out for user:', req.user.id);
     const cartItems = await prisma.cartItem.findMany({
       where: { userId: req.user.id },
       include: { product: true }
     });
 
-    let totalQuantity = 0;
+    let totalAmount = 0;
     for (const item of cartItems) {
-      console.log('Checking out item:', item);
-      totalQuantity += item.quantity;
       const product = await prisma.product.findUnique({
         where: { id: item.productId }
       });
@@ -140,6 +143,7 @@ const checkoutCart = async (req, res) => {
         return res.status(400).json({ error: `Insufficient stock for product ${item.productId}` });
       }
 
+      totalAmount += product.price * item.quantity;
       await prisma.product.update({
         where: { id: product.id },
         data: { quantity: product.quantity - item.quantity }
@@ -147,7 +151,7 @@ const checkoutCart = async (req, res) => {
     }
 
     await prisma.cartItem.deleteMany({ where: { userId: req.user.id } });
-    res.status(200).json({ message: 'Checkout successful' });
+    res.status(200).json({ message: 'Checkout successful', totalAmount });
   } catch (error) {
     console.error('Error checking out cart:', error.message);
     res.status(500).json({ error: 'Failed to checkout cart' });
